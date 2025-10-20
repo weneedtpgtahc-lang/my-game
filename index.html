@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>나만의 미니 게임</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: #111; color: #eee; font-family: system-ui, sans-serif; }
+    .wrap { display: grid; place-items: center; height: 100%; gap: 12px; }
+    canvas { background: #1a1a1a; border: 2px solid #333; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+    .hud { text-align: center; opacity: .9; }
+    .btn { display:inline-block; padding:.5rem .9rem; border:1px solid #444; border-radius:10px; cursor:pointer; user-select:none; }
+    .btn:hover { background:#222; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="game" width="480" height="720"></canvas>
+    <div class="hud">
+      <div>← → 방향키로 이동 • 블록을 피하세요!</div>
+      <div style="margin-top:6px;">
+        <span class="btn" id="restart">다시 시작</span>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    const W = canvas.width;
+    const H = canvas.height;
+
+    const player = { x: W/2, y: H - 80, w: 60, h: 14, speed: 6, vx: 0 };
+
+    const enemies = [];
+    const enemyBaseSpeed = 2;
+    let enemySpawnInterval = 800;
+
+    let lastTime = 0;
+    let accSpawn = 0;
+    let running = true;
+    let score = 0;
+    let high = +localStorage.getItem('highscore_dodge') || 0;
+
+    const keys = new Set();
+    window.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'Left') keys.add('left');
+      if (e.key === 'ArrowRight' || e.key === 'Right') keys.add('right');
+    });
+    window.addEventListener('keyup', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'Left') keys.delete('left');
+      if (e.key === 'ArrowRight' || e.key === 'Right') keys.delete('right');
+    });
+
+    const rand = (a,b) => Math.random()*(b-a)+a;
+
+    function spawnEnemy() {
+      const w = rand(30, 80);
+      const x = rand(0, W - w);
+      const speed = enemyBaseSpeed + rand(0, score*0.015 + 1.5);
+      enemies.push({ x, y: -30, w, h: 16, vy: speed });
+    }
+
+    function resetGame() {
+      enemies.length = 0;
+      score = 0;
+      player.x = W/2;
+      running = true;
+      accSpawn = 0;
+      lastTime = 0;
+      animate(0);
+    }
+
+    function collide(a, b) {
+      return (a.x < b.x + b.w &&
+              a.x + a.w > b.x &&
+              a.y < b.y + b.h &&
+              a.y + a.h > b.y);
+    }
+
+    function draw() {
+      ctx.fillStyle = '#0d0d0d';
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.fillStyle = '#eaeaea';
+      ctx.font = '18px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`SCORE: ${Math.floor(score)}`, 16, 28);
+      ctx.textAlign = 'right';
+      ctx.fillText(`BEST: ${Math.floor(high)}`, W - 16, 28);
+
+      ctx.fillStyle = '#7bd389';
+      ctx.fillRect(player.x - player.w/2, player.y - player.h/2, player.w, player.h);
+
+      ctx.fillStyle = '#ff6b6b';
+      enemies.forEach(e => {
+        ctx.fillRect(e.x, e.y, e.w, e.h);
+      });
+
+      if (!running) {
+        ctx.fillStyle = 'rgba(0,0,0,.55)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 34px system-ui, sans-serif';
+        ctx.fillText('GAME OVER', W/2, H/2 - 10);
+        ctx.font = '18px system-ui, sans-serif';
+        ctx.fillText('다시 시작을 누르세요', W/2, H/2 + 24);
+      }
+    }
+
+    function update(dt) {
+      player.vx = 0;
+      if (keys.has('left'))  player.vx -= player.speed;
+      if (keys.has('right')) player.vx += player.speed;
+
+      player.x += player.vx;
+      player.x = Math.max(player.w/2, Math.min(W - player.w/2, player.x));
+
+      accSpawn += dt;
+      const dynamicInterval = Math.max(220, enemySpawnInterval - score*3);
+      if (accSpawn > dynamicInterval) {
+        accSpawn = 0;
+        spawnEnemy();
+      }
+
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const e = enemies[i];
+        e.y += e.vy;
+        if (e.y > H + 40) enemies.splice(i, 1);
+        if (running && collide(
+          { x: player.x - player.w/2, y: player.y - player.h/2, w: player.w, h: player.h },
+          e
+        )) {
+          running = false;
+          high = Math.max(high, Math.floor(score));
+          localStorage.setItem('highscore_dodge', String(high));
+        }
+      }
+
+      if (running) score += dt * 0.01;
+    }
+
+    function animate(t) {
+      const dt = lastTime ? (t - lastTime) : 16;
+      lastTime = t;
+
+      if (running) update(dt);
+      draw();
+
+      requestAnimationFrame(animate);
+    }
+
+    document.getElementById('restart').addEventListener('click', resetGame);
+
+    animate(0);
+  </script>
+</body>
+</html>
